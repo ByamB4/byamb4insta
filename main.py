@@ -8,9 +8,10 @@ from dotenv import load_dotenv
 
 PROJECT_NAME = os.path.dirname(os.path.abspath(__file__)).split('/')[-1]
 
+
 class MrInsta:
     BASE_URL = 'https://api.mrinsta.com'
-    TARGET = 'byamb4'
+    TARGET = 'jaki_oppa'
     RESPONSE: str = ''
     ACCOUNTS: list = []
 
@@ -47,11 +48,11 @@ class MrInsta:
         except Exception as e:
             return timedelta(seconds=0)
 
-    def without_email(self, _) -> str:
-        return _.split('@')[0] if '@' in _ else _
+    def without_email(
+        self, _) -> str: return _.split('@')[0] if '@' in _ else _
 
-    def read_accounts(self) -> None:
-        self.ACCOUNTS = json.load(open(f'{get_project_root()}/accounts.json', 'r'))
+    def read_accounts(self) -> None: self.ACCOUNTS = json.load(
+        open(f'{get_project_root()}/accounts.json', 'r'))
 
     def login(self, creds) -> None:
         try:
@@ -126,7 +127,7 @@ def discord_log(resp) -> None:
 
     @client.event
     async def on_ready() -> None:
-        await client.get_channel(os.getenv('DISCORD_CHANNEL')).send(f'```{resp[:1500]}```')
+        await client.get_channel(int(os.getenv('DISCORD_CHANNEL'))).send(f'```{resp[:1500]}```')
         await client.close()
 
     client.run(os.getenv('DISCORD_TOKEN'))
