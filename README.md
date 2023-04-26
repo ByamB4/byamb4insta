@@ -1,0 +1,23 @@
+# MrInsta
+Get instagram free followers using mrinsta api endpoints
+
+### Before running the script
+Make sure to follow these steps before running the script:
+
+- Create fake users in mrinsta then copy to `users.json`
+- Update your `.env` file
+
+### Running the script
+To run the script, use the following command in the terminal:
+
+```
+python main.py
+```
+
+### Cronjob
+If you want to run the script automatically, you can set up a cronjob. For example, the following cronjob will run the script every hour:
+
+```
+crontab -e
+0 * * * * cd <THIS_REPO_PATH>; python main.py >/tmp/mrinsta.suc 2>/tmp/mrinsta.err;
+```
