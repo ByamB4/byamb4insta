@@ -1,5 +1,5 @@
 # MrInsta
-Get instagram free followers using mrinsta api endpoints
+Automate the process of obtaining free Instagram followers using Mr. Insta
 
 ### Before running the script
 Make sure to follow these steps before running the script:
