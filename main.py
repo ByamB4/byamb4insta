@@ -7,36 +7,57 @@ import discord
 from dotenv import load_dotenv
 
 load_dotenv()
-TARGET = 'jaki_oppa'
 URL = 'https://api.mrinsta.com/api'
 
+# CONFIGURE THIS
+TARGET = 'jaki_oppa'
+DISCORD_LOG = False
+
 def main():
-    resp = f'[+] Target: {TARGET}\n'
+    message = f'[+] Target: {TARGET}'
+    log = message + '\n'
+    print(message)
     for account in json.load(open('accounts.json', 'r')):
-        session = Session()
-        login(session, account)
-        available, message = activate_follow_user(session)
-        if not available:
-            time_left = get_time_left(session)
-            _ = f"[-] {without_email(account['email'])}: {time_left}"; print(_); resp += _ + '\n'
-            continue
-        _ = f"[+] Available: {without_email(account['email'])}"; print(_); resp += _ + '\n'
-        logic(session, message['user']['id'])
-        redeem_earned_coin(session)
-    discord_log(resp)
+        with Session() as session:
+            login(session, account)
+            available, message = activate_follow_user(session)
+            if not available:
+                time_left = get_time_left(session)
+                _ = f"[-] {without_email(account['email'])}: {time_left}"; print(_); log += _ + '\n'
+            else:
+                _ = f"[+] Available: {without_email(account['email'])}"; print(_); log += _ + '\n'
+                follow_user(session, message['user']['id'])
+            total_coin = get_earned_coin_details(session)
+            if total_coin > 0:
+                redeem_earned_coin(session, total_coin)
+            log_out(session)
+    if DISCORD_LOG: discord_log(log)
+
+def log_out(session: Session):
+    print(f"\t[+] {session.post(f'{URL}/logout').json()['message']}")
+
+def get_earned_coin_details(session: Session) -> int:
+    total_coin = int(session.get(f'{URL}/getEarnedCoinDetails').json()['data']['total_earn_coin'])
+    print(f'\t[+] Total coin: {total_coin}')
+    return total_coin
 
 def get_time_left(session: Session) -> timedelta:
-    resp = session.get(f'{URL}/activeSubscriptionSetupForAll').json()
-    end_time = zulu.parse(resp.get('data', {}).get('free_followers_end_datetime'))
-    return str(max(end_time - zulu.now(), timedelta(0))).split('.')[0]
+    try:
+        # thats weird issue, sometimes this endpoint returns empty data
+        resp = session.get(f'{URL}/activeSubscriptionSetupForAll').json()
+        seconds = (zulu.parse(
+            resp['data']['free_followers_end_datetime']) - zulu.now()).seconds
+        return timedelta(seconds=seconds)
+    except:
+        return timedelta(seconds=0)
 
-def without_email(email: str) -> str:
-    return email.split('@')[0] if '@' in email else email
+def without_email(email: str) -> str: return email.split('@')[0] if '@' in email else email
 
 
 def login(session: Session, account: dict) -> None:
     resp = session.post(f'{URL}/login', json={
         'username': account['email'],
+        # same password for all account
         'password': os.getenv('PASSWORD'),
     }).json()['data']
     session.headers.update({
@@ -48,7 +69,7 @@ def activate_follow_user(session: Session) -> tuple:
     message, data = resp['message'], resp['data']
     return (False, message) if "activated" in message else (True, data)
 
-def logic(session: Session, user_id: int) -> None:
+def follow_user(session: Session, user_id: int) -> None:
     for _ in range(10):
         confirmed_followers = session.get(f'{URL}/getTotalAndPendingFollow').json()['data']['confirmed_followers']
         print(f'\t[+] Confirmed followers: {confirmed_followers+1}')
@@ -59,13 +80,18 @@ def logic(session: Session, user_id: int) -> None:
         user_id = session.post(f'{URL}/refreshUserFollow').json()['data']['user']['id']
     session.post(f'{URL}/validateFollowUser')
 
-def redeem_earned_coin(session: Session) -> None:
-    resp = session.post(f'{URL}/api/redeemEarnedCoinDetails', json={
+def redeem_earned_coin(session: Session, total_coin: int) -> None:
+    coin = total_coin
+    qnty = total_coin // 10
+    if total_coin > 1000:
+        coin = 1000
+        qnty = 100
+    resp = session.post(f'{URL}/redeemEarnedCoinDetails', json={
         'service': 'followers',
         'comments': '',
         'link': f'https://www.instagram.com/{TARGET}/',
-        'qnty': '10',
-        'coin': 100,
+        'qnty': qnty,
+        'coin': coin,
     }).json()
     print(f"\t[+] Message: {resp['message']}")
 
