@@ -8,13 +8,12 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-
 URL = 'https://api.mrinsta.com/api'
 
 # CONFIGURE THIS
-TARGET = 'jaki_oppa'
+TARGET = 'byamb4'
 DISCORD_LOG = False
-PASSWORD = getenv('PASSWORD', 'UPDATE_ME')
+PASSWORD = getenv('PASSWORD', 'Password!@#123')
 
 class MrInsta:
     def __init__(self) -> None:
