@@ -4,8 +4,9 @@ Automate the process of obtaining free Instagram followers using Mr. Insta
 ### Before running the script
 Make sure to follow these steps before running the script:
 
-- Create fake users in mrinsta then copy to `users.json`
+- Create fake users in [https://app.mrinsta.com](https://app.mrinsta.com/) then copy to `users.json`
 - Update your `.env` file
+- Update your `main.py/TARGET`
 
 ### Running the script
 To run the script, use the following command in the terminal:
