@@ -62,15 +62,21 @@ class MrInsta:
             # same password for all account
             'password': PASSWORD,
         }).json()
-        if resp['success'] == False:
-            print(f"\t[-] {resp['message']}")
-            return False
         try:
+            if resp['success'] == False:
+                print(f"\t[-] {resp['message']}")
+                return False
             self.SESSION.headers.update({
                 'Authorization': f"Bearer {resp['data']['access_token']}",
             })
         except Exception as e:
+            # this branch shouldn't happen
+            # idk what causes this probably by mrinsta, still trying to figure this out
+            # solution: try rerun (it works for me)
             print('\t[-] Login failed')
+            print('\t[-] Try rerun')
+            # print(f'\t[DEBUG] {resp}')
+            # input()
             self.SESSION.close()
             self.SESSION = Session()
             return False
