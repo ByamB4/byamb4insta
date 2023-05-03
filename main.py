@@ -1,7 +1,9 @@
-from requests import Session
+from requests import Session, get, post
 from os import getenv, path
 from json import load
+from time import sleep
 from dotenv import load_dotenv
+from lxml import html
 import typing
 
 load_dotenv()
@@ -11,6 +13,7 @@ TARGET = 'byamb4'
 PASSWORD = getenv('PASSWORD', 'Password!@#123')
 # ==============================================
 
+
 class MrInsta:
     def __init__(self) -> None:
         print(f'[+] Target: {TARGET}')
@@ -19,7 +22,7 @@ class MrInsta:
         for account in load(open(f"{path.join(path.dirname(__file__), 'accounts.json')}", 'r')):
             print(f"[*] Account: {account['email']}")
             success = self.login(account)
-            
+
             if not success:
                 continue
 
@@ -75,8 +78,8 @@ class MrInsta:
             # solution: try rerun (it works for me)
             print('\t[-] Login failed')
             print('\t[-] Try rerun')
-            # print(f'\t[DEBUG] {resp}')
-            # input()
+            print(f'\t[DEBUG] {resp}')
+            input()
             self.SESSION.close()
             self.SESSION = Session()
             return False
@@ -131,5 +134,97 @@ class MrInsta:
         print(f"\t[+] Message: {resp['message']}")
 
 
+class CreateAccounts:
+    def __init__(self):
+        _, email = self.generate_new_email()
+        _, data = self.register(email)
+        _, otp = self.get_otp(email)
+        if not _:
+            print('\t[-] No OTP found')
+            exit()
+        _, data = self.verify_email(email, otp)
+        _ = self.connect_ig(email)
+
+    def connect_ig(self, email: str):
+        # Login again
+        resp = post('https://api.mrinsta.com/api/login', json={
+            "username": email,
+            "password": PASSWORD
+        }).json()
+        user_id, access_token = resp['data']['user_id'], resp['data']['access_token']
+        print(f"\t[+] {resp['message']}")
+
+        # storeUpdateUserDetails
+        resp = post('https://api.mrinsta.com/api/storeUpdateUserDetails', headers={
+            "Authorization": f"Bearer {access_token}"
+        }, json={
+            "user_id": user_id,
+            "location": "South America",
+            "gender": "Prefer not to say",
+            "age": "35-44"
+        }).json()
+        print(f"\t[+] {resp['message']}")
+
+        # interests
+        resp = post('https://api.mrinsta.com/api/storeUserWiseInterests', headers={
+            "Authorization": f"Bearer {access_token}"
+        }, json={
+            "id": user_id,
+            "interests": "22, 21, 20, 19",
+        }).json()
+        print(f"\t[+] {resp['message']}")
+
+        # connect to instagram account
+        # NOTE: need proper solution
+        # resp = post('https://api.mrinsta.com/api/addConnectedIGAccount', headers={
+        #     "Authorization": f"Bearer {access_token}"
+        # }, json={
+        #     "username": <INSTAGRAM_ACCOUNT_WITH_5_PUBLIC_POST>,
+        # }).json()
+        # print(resp)
+
+    def get_otp(self, email: str):
+        for _ in range(1, 20):
+            try:
+                sleep(2)
+                print(f'\t[*] Trying: {_}')
+                tree = html.fromstring(
+                    get(f'https://email-fake.com/{email}').content)
+                otp = tree.xpath(
+                    "//table[@class='content']//h3")[0].text_content()
+                if len(otp) == 6:
+                    print(f'\t[+] OTP: {otp}')
+                    return True, otp
+            except:
+                pass
+        return False, ''
+
+    def register(self, email: str):
+        resp = post('https://api.mrinsta.com/api/register', json={
+            "email": email,
+            "password": PASSWORD,
+            "confirm_password": PASSWORD,
+        }).json()
+        if resp['success']:
+            print('\t[+] Registered on mrinsta')
+        return resp['success'], resp['data']
+
+    def verify_email(self, email: str, otp: str):
+        resp = get(f"https://api.mrinsta.com/api/verify/{otp}/{email}").json()
+        if resp['success']:
+            print("\t[+] Account activated")
+            return resp['success'], resp['message']
+        return False, resp
+
+    def generate_new_email(self):
+        tree = html.fromstring(get('https://email-fake.com/').content)
+        mail = tree.xpath("//span[@id='email_ch_text']")[0].text_content()
+        print(f'[+] Email: {mail}')
+        if '@' in mail:
+            return True, mail
+        return False, ''
+
+
 if __name__ == '__main__':
-    MrInsta()
+    # MrInsta()
+    CreateAccounts()
