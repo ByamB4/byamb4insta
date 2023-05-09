@@ -1,10 +1,11 @@
 from requests import Session, get, post
 from os import getenv, path
-from json import load
+from json import load, dump
 from time import sleep
 from dotenv import load_dotenv
 from lxml import html
 import typing
+import signal
 
 load_dotenv()
 
@@ -75,11 +76,23 @@ class MrInsta:
         except Exception as e:
             # this branch shouldn't happen
             # idk what causes this probably by mrinsta, still trying to figure this out
-            # solution: try rerun (it works for me)
+            # solution: try rerun (sometimes it works for me)
             print('\t[-] Login failed')
             print('\t[-] Try rerun')
             print(f'\t[DEBUG] {resp}')
-            input()
+            sleep(2)
+            self.SESSION = Session()
+            resp = self.SESSION.post(f'{self.URL}/login', json={
+                'username': account['email'],
+                # same password for all account
+                'password': PASSWORD,
+            }).json()
+            print(resp)
+            if resp['success'] == False:
+                self.SESSION.headers.update({
+                    'Authorization': f"Bearer {resp['data']['access_token']}",
+                })
+                return True
             self.SESSION.close()
             self.SESSION = Session()
             return False
@@ -135,15 +148,36 @@ class MrInsta:
 
 
 class CreateAccounts:
+    # create new accounts
     def __init__(self):
-        _, email = self.generate_new_email()
-        _, data = self.register(email)
-        _, otp = self.get_otp(email)
-        if not _:
-            print('\t[-] No OTP found')
-            exit()
-        _, data = self.verify_email(email, otp)
-        _ = self.connect_ig(email)
+        self.WORKED_ACCOUNTS, self.ACCOUNTS, self.INDEX = [], [], 0
+        signal.signal(signal.SIGINT, self.signal_handler)
+
+        with open('followers.txt', 'r') as f:
+            for _ in f.readlines():
+                self.ACCOUNTS.append(_.strip())
+                
+        # working from behind, coz most of accounts taken by tulgaa
+        self.ACCOUNTS = self.ACCOUNTS[::-1]
+
+        while True:
+            _, email = self.generate_new_email()
+            _, data = self.register(email)
+            _, otp = self.get_otp(email)
+            if not _:
+                print('\t[-] No OTP found')
+                print(f'\t[-] Last account: {self.ACCOUNTS[self.INDEX]}')
+                self.save_emails()
+                self.WORKED_ACCOUNTS = []
+                continue
+            _, data = self.verify_email(email, otp)
+            _ = self.connect_ig(email)
+            if self.INDEX >= len(self.ACCOUNTS):
+                print('[+] Well no account left')
+                break
+
+        with open('done', 'w') as f:
+            f.write('\n'.join(self.WORKED_ACCOUNTS))
 
     def connect_ig(self, email: str):
         # Login again
@@ -152,7 +186,6 @@ class CreateAccounts:
             "password": PASSWORD
         }).json()
         user_id, access_token = resp['data']['user_id'], resp['data']['access_token']
-        print(f"\t[+] {resp['message']}")
 
         # storeUpdateUserDetails
         resp = post('https://api.mrinsta.com/api/storeUpdateUserDetails', headers={
@@ -163,7 +196,6 @@ class CreateAccounts:
             "gender": "Prefer not to say",
             "age": "35-44"
         }).json()
-        print(f"\t[+] {resp['message']}")
 
         # interests
         resp = post('https://api.mrinsta.com/api/storeUserWiseInterests', headers={
@@ -172,22 +204,26 @@ class CreateAccounts:
             "id": user_id,
             "interests": "22, 21, 20, 19",
         }).json()
-        print(f"\t[+] {resp['message']}")
 
         # connect to instagram account
         # NOTE: need proper solution
-        # resp = post('https://api.mrinsta.com/api/addConnectedIGAccount', headers={
-        #     "Authorization": f"Bearer {access_token}"
-        # }, json={
-        #     "username": <INSTAGRAM_ACCOUNT_WITH_5_PUBLIC_POST>,
-        # }).json()
-        # print(resp)
+        while self.INDEX < len(self.ACCOUNTS):
+            resp = post('https://api.mrinsta.com/api/addConnectedIGAccount', headers={
+                "Authorization": f"Bearer {access_token}"
+            }, json={
+                "username": self.ACCOUNTS[self.INDEX],
+            }).json()
+            # print(f'\t[*] Tried: {self.ACCOUNTS[self.INDEX]}: {resp}')
+            if resp['success']:
+                print(f'[+] Works: {self.ACCOUNTS[self.INDEX]}, {email}')
+                self.WORKED_ACCOUNTS.append(email)
+                return True
+            self.INDEX += 1
 
     def get_otp(self, email: str):
-        for _ in range(1, 20):
+        for _ in range(1, 50):
             try:
                 sleep(2)
-                print(f'\t[*] Trying: {_}')
                 tree = html.fromstring(
                     get(f'https://email-fake.com/{email}').content)
                 otp = tree.xpath(
@@ -195,7 +231,7 @@ class CreateAccounts:
                 if len(otp) == 6:
                     print(f'\t[+] OTP: {otp}')
                     return True, otp
-            except:
+            except Exception as e:
                 pass
         return False, ''
 
@@ -207,6 +243,7 @@ class CreateAccounts:
         }).json()
         if resp['success']:
             print('\t[+] Registered on mrinsta')
+            pass
         return resp['success'], resp['data']
 
     def verify_email(self, email: str, otp: str):
@@ -223,6 +260,23 @@ class CreateAccounts:
         if '@' in mail:
             return True, mail
         return False, ''
+
+    def save_emails(self):
+        print(f'[+] New accounts: {len(self.WORKED_ACCOUNTS)}')
+        print('[+] Exiting')
+        if len(self.WORKED_ACCOUNTS) > 0:
+            with open('accounts.json', 'r') as f:
+                accounts = load(f)
+            for _ in self.WORKED_ACCOUNTS:
+                accounts.append({
+                    'email': _
+                })
+            with open('accounts.json', 'w') as f:
+                dump(accounts, f)
+
+    def signal_handler(self, sig, frame) -> None:
+        self.save_emails()
+        exit(0)
 
 
 if __name__ == '__main__':
