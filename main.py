@@ -14,11 +14,10 @@ TARGET = 'byamb4'
 PASSWORD = getenv('PASSWORD', 'Password!@#123')
 # ==============================================
 
-
+BASE_URL = 'https://api.mrinsta.com/api'
 class MrInsta:
     def __init__(self) -> None:
         print(f'[+] Target: {TARGET}')
-        self.URL = 'https://api.mrinsta.com/api'
         self.SESSION = Session()
         for account in load(open(f"{path.join(path.dirname(__file__), 'accounts.json')}", 'r')):
             print(f"[*] Account: {account['email']}")
@@ -44,24 +43,24 @@ class MrInsta:
             self.log_out()
 
     def validate_post_like(self) -> str:
-        return self.SESSION.post(f'{self.URL}/validatePostLike').json()['message']
+        return self.SESSION.post(f'{BASE_URL}/validatePostLike').json()['message']
 
     def confirm_like_post(self, target_id: str) -> str:
-        return self.SESSION.post(f'{self.URL}/confirmLikePosts', json={'post_id': target_id}).json()['message']
+        return self.SESSION.post(f'{BASE_URL}/confirmLikePosts', json={'post_id': target_id}).json()['message']
 
     def refresh_user_like(self) -> str:
-        return self.SESSION.post(f'{self.URL}/refreshUserLike').json()['data']['id']
+        return self.SESSION.post(f'{BASE_URL}/refreshUserLike').json()['data']['id']
 
     def like_posts_info(self) -> str:
-        return self.SESSION.get(f'{self.URL}/likePostsInfo').json()['data']['confirmed_posts']
+        return self.SESSION.get(f'{BASE_URL}/likePostsInfo').json()['data']['confirmed_posts']
 
     def active_subscription_setup(self) -> typing.Tuple[bool, bool]:
         resp = self.SESSION.get(
-            f'{self.URL}/activeSubscriptionSetupForAll').json()['data']
+            f'{BASE_URL}/activeSubscriptionSetupForAll').json()['data']
         return resp['is_free_followers_plan_active'], resp['is_free_post_like_active']
 
     def login(self, account: dict) -> bool:
-        resp = self.SESSION.post(f'{self.URL}/login', json={
+        resp = self.SESSION.post(f'{BASE_URL}/login', json={
             'username': account['email'],
             # same password for all account
             'password': PASSWORD,
@@ -82,7 +81,7 @@ class MrInsta:
             print(f'\t[DEBUG] {resp}')
             sleep(2)
             self.SESSION = Session()
-            resp = self.SESSION.post(f'{self.URL}/login', json={
+            resp = self.SESSION.post(f'{BASE_URL}/login', json={
                 'username': account['email'],
                 # same password for all account
                 'password': PASSWORD,
@@ -98,13 +97,13 @@ class MrInsta:
             return False
         return True
 
-    def log_out(self) -> None: self.SESSION.post(f'{self.URL}/logout')
+    def log_out(self) -> None: self.SESSION.post(f'{BASE_URL}/logout')
 
     def get_earned_coin_details(self) -> int: return int(self.SESSION.get(
-        f'{self.URL}/getEarnedCoinDetails').json()['data']['total_earn_coin'])
+        f'{BASE_URL}/getEarnedCoinDetails').json()['data']['total_earn_coin'])
 
     def activate_follow_user(self) -> typing.Tuple[bool, typing.Union[str, typing.Any]]:
-        resp = self.SESSION.post(f'{self.URL}/activateFollowUser').json()
+        resp = self.SESSION.post(f'{BASE_URL}/activateFollowUser').json()
         message, data = resp['message'], resp['data']
         return (False, message) if "activated" in message else (True, data)
 
@@ -120,24 +119,24 @@ class MrInsta:
     def follow_user(self, user_id: int) -> None:
         for _ in range(10):
             confirmed_followers = self.SESSION.get(
-                f'{self.URL}/getTotalAndPendingFollow').json()['data']['confirmed_followers']
+                f'{BASE_URL}/getTotalAndPendingFollow').json()['data']['confirmed_followers']
             if confirmed_followers + 1 > 10:
                 break
             print(f'\t[+] Confirmed followers: {confirmed_followers + 1}')
-            self.SESSION.post(f'{self.URL}/confirmFollow', json={
+            self.SESSION.post(f'{BASE_URL}/confirmFollow', json={
                 'user_id': user_id,
                 'premium_user': 1,
             })
             user_id = self.SESSION.post(
-                f'{self.URL}/refreshUserFollow').json()['data']['user']['id']
-        self.SESSION.post(f'{self.URL}/validateFollowUser')
+                f'{BASE_URL}/refreshUserFollow').json()['data']['user']['id']
+        self.SESSION.post(f'{BASE_URL}/validateFollowUser')
 
     def redeem_earned_coin(self, total_coin: int) -> None:
         # coin, qnty should be more clear, fix needed
         coin, qnty = total_coin, total_coin // 10
         if total_coin > 1000:
             coin, qnty = 1000, 100
-        resp = self.SESSION.post(f'{self.URL}/redeemEarnedCoinDetails', json={
+        resp = self.SESSION.post(f'{BASE_URL}/redeemEarnedCoinDetails', json={
             'service': 'followers',
             'comments': '',
             'link': f'https://www.instagram.com/{TARGET}/',
@@ -150,13 +149,14 @@ class MrInsta:
 class CreateAccounts:
     # create new accounts
     def __init__(self):
+        self.EMAIL_URL = 'https://email-fake.com'
         self.WORKED_ACCOUNTS, self.ACCOUNTS, self.INDEX = [], [], 0
         signal.signal(signal.SIGINT, self.signal_handler)
 
         with open('followers.txt', 'r') as f:
             for _ in f.readlines():
                 self.ACCOUNTS.append(_.strip())
-                
+
         # working from behind, coz most of accounts taken by tulgaa
         self.ACCOUNTS = self.ACCOUNTS[::-1]
 
@@ -181,14 +181,14 @@ class CreateAccounts:
 
     def connect_ig(self, email: str):
         # Login again
-        resp = post('https://api.mrinsta.com/api/login', json={
+        resp = post(f'{BASE_URL}/login', json={
             "username": email,
             "password": PASSWORD
         }).json()
         user_id, access_token = resp['data']['user_id'], resp['data']['access_token']
 
         # storeUpdateUserDetails
-        resp = post('https://api.mrinsta.com/api/storeUpdateUserDetails', headers={
+        resp = post(f'{BASE_URL}/storeUpdateUserDetails', headers={
             "Authorization": f"Bearer {access_token}"
         }, json={
             "user_id": user_id,
@@ -198,7 +198,7 @@ class CreateAccounts:
         }).json()
 
         # interests
-        resp = post('https://api.mrinsta.com/api/storeUserWiseInterests', headers={
+        resp = post(f'{BASE_URL}/storeUserWiseInterests', headers={
             "Authorization": f"Bearer {access_token}"
         }, json={
             "id": user_id,
@@ -208,7 +208,7 @@ class CreateAccounts:
         # connect to instagram account
         # NOTE: need proper solution
         while self.INDEX < len(self.ACCOUNTS):
-            resp = post('https://api.mrinsta.com/api/addConnectedIGAccount', headers={
+            resp = post(f'{BASE_URL}/addConnectedIGAccount', headers={
                 "Authorization": f"Bearer {access_token}"
             }, json={
                 "username": self.ACCOUNTS[self.INDEX],
@@ -225,7 +225,7 @@ class CreateAccounts:
             try:
                 sleep(2)
                 tree = html.fromstring(
-                    get(f'https://email-fake.com/{email}').content)
+                    get(f'{self.EMAIL_URL}/{email}').content)
                 otp = tree.xpath(
                     "//table[@class='content']//h3")[0].text_content()
                 if len(otp) == 6:
@@ -236,7 +236,7 @@ class CreateAccounts:
         return False, ''
 
     def register(self, email: str):
-        resp = post('https://api.mrinsta.com/api/register', json={
+        resp = post(f'{BASE_URL}/register', json={
             "email": email,
             "password": PASSWORD,
             "confirm_password": PASSWORD,
@@ -247,14 +247,14 @@ class CreateAccounts:
         return resp['success'], resp['data']
 
     def verify_email(self, email: str, otp: str):
-        resp = get(f"https://api.mrinsta.com/api/verify/{otp}/{email}").json()
+        resp = get(f"{BASE_URL}/verify/{otp}/{email}").json()
         if resp['success']:
             print("\t[+] Account activated")
             return resp['success'], resp['message']
         return False, resp
 
     def generate_new_email(self):
-        tree = html.fromstring(get('https://email-fake.com/').content)
+        tree = html.fromstring(get(f'{self.EMAIL_URL}').content)
         mail = tree.xpath("//span[@id='email_ch_text']")[0].text_content()
         print(f'[+] Email: {mail}')
         if '@' in mail:
