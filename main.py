@@ -1,4 +1,4 @@
-from requests import Session, get, post
+from requests import get, post
 from os import getenv, path
 from json import load, dump
 from time import sleep
@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from lxml import html
 import typing
 import signal
+from concurrent.futures import ThreadPoolExecutor
 
 load_dotenv()
 
@@ -15,135 +16,172 @@ PASSWORD = getenv('PASSWORD', 'Password!@#123')
 # ==============================================
 
 BASE_URL = 'https://api.mrinsta.com/api'
+
 class MrInsta:
     def __init__(self) -> None:
         print(f'[+] Target: {TARGET}')
-        self.SESSION = Session()
-        for account in load(open(f"{path.join(path.dirname(__file__), 'accounts.json')}", 'r')):
-            print(f"[*] Account: {account['email']}")
-            success = self.login(account)
+        self.ACCOUNTS = load(
+            open(f"{path.join(path.dirname(__file__), 'accounts.json')}", 'r'))
+        self.process_accounts()
 
-            if not success:
-                continue
+    def process_accounts(self, max_workers=10) -> None:
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            for account in self.ACCOUNTS:
+                executor.submit(self.process_account, account)
 
-            is_free_followers_plan_active, is_free_post_like_active = self.active_subscription_setup()
-            _, message = self.activate_follow_user()
-            if not is_free_followers_plan_active and not 'activated' in message:
-                self.follow_user(message['user']['id'])
-            else:
-                print(f"\t[-] Follow plan not active")
-            if not is_free_post_like_active:
-                self.like_post()
-            else:
-                print(f"\t[-] Like post plan not active")
+    def process_account(self, account: str) -> None:
+        _, access_token, insta_session = self.login(account)
 
-            total_coin = self.get_earned_coin_details()
-            if total_coin > 0:
-                self.redeem_earned_coin(total_coin)
-            self.log_out()
+        if not _:
+            return
 
-    def validate_post_like(self) -> str:
-        return self.SESSION.post(f'{BASE_URL}/validatePostLike').json()['message']
+        is_free_followers_plan_active, is_free_post_like_active = self.active_subscription_setup(
+            access_token, insta_session)
+        _, message = self.activate_follow_user(access_token, insta_session)
+        if not is_free_followers_plan_active and not 'activated' in message:
+            self.follow_user(message['user']['id'],
+                             access_token, insta_session)
+        if not is_free_post_like_active:
+            self.like_post(access_token, insta_session)
 
-    def confirm_like_post(self, target_id: str) -> str:
-        return self.SESSION.post(f'{BASE_URL}/confirmLikePosts', json={'post_id': target_id}).json()['message']
+        total_coin = self.get_earned_coin_details(
+            access_token, insta_session)
+        print(f"[+] {account['email']}: {total_coin}")
+        if total_coin > 0:
+            self.redeem_earned_coin(
+                total_coin, access_token, insta_session, account)
+        self.log_out(access_token, insta_session)
 
-    def refresh_user_like(self) -> str:
-        return self.SESSION.post(f'{BASE_URL}/refreshUserLike').json()['data']['id']
+    def validate_post_like(self, access_token: str, insta_session: str) -> str:
+        return post(f'{BASE_URL}/validatePostLike', headers={
+            "Authorization": f"Bearer {access_token}"
+        }, cookies={
+            "mrinsta_session": insta_session
+        }).json()['message']
 
-    def like_posts_info(self) -> str:
-        return self.SESSION.get(f'{BASE_URL}/likePostsInfo').json()['data']['confirmed_posts']
+    def confirm_like_post(self, target_id: str, access_token: str, insta_session: str) -> str:
+        return post(f'{BASE_URL}/confirmLikePosts', json={'post_id': target_id}, headers={
+            "Authorization": f"Bearer {access_token}"
+        }, cookies={
+            "mrinsta_session": insta_session
+        }).json()['message']
 
-    def active_subscription_setup(self) -> typing.Tuple[bool, bool]:
-        resp = self.SESSION.get(
-            f'{BASE_URL}/activeSubscriptionSetupForAll').json()['data']
+    def refresh_user_like(self, access_token: str, insta_session: str) -> str:
+        return post(f'{BASE_URL}/refreshUserLike', headers={
+            "Authorization": f"Bearer {access_token}"
+        }, cookies={
+            "mrinsta_session": insta_session
+        }).json()['data']['id']
+
+    def like_posts_info(self, access_token: str, insta_session: str) -> str:
+        return get(f'{BASE_URL}/likePostsInfo', headers={
+            "Authorization": f"Bearer {access_token}"
+        }, cookies={
+            "mrinsta_session": insta_session
+        }).json()['data']['confirmed_posts']
+
+    def active_subscription_setup(self, access_token: str, insta_session: str) -> typing.Tuple[bool, bool]:
+        resp = get(
+            f'{BASE_URL}/activeSubscriptionSetupForAll',
+            headers={
+                "Authorization": f"Bearer {access_token}"
+            },
+            cookies={
+                'mrinsta_session': insta_session
+            }
+        ).json()['data']
         return resp['is_free_followers_plan_active'], resp['is_free_post_like_active']
 
-    def login(self, account: dict) -> bool:
-        resp = self.SESSION.post(f'{BASE_URL}/login', json={
+    def login(self, account: dict) -> typing.Tuple[bool, str, str]:
+        resp = post(f'{BASE_URL}/login', json={
             'username': account['email'],
-            # same password for all account
             'password': PASSWORD,
+        })
+
+        if 'access_token' in resp.json()['data']:
+            return True, resp.json()['data']['access_token'], resp.cookies['mrinsta_session']
+        # its related to mrinsta
+        # print(f'[-] Login failed: {account}')
+        # print(resp.json())
+        return False, "", ""
+
+    def log_out(self, access_token: str, insta_session: str) -> None: post(f'{BASE_URL}/logout', headers={
+        "Authorization": f"Bearer {access_token}"
+    }, cookies={
+        "mrinsta_session": insta_session
+    })
+
+    def get_earned_coin_details(self, access_token: str, insta_session: str) -> int: return int(get(
+        f'{BASE_URL}/getEarnedCoinDetails', headers={
+            "Authorization": f"Bearer {access_token}"
+        }, cookies={
+            "mrinsta_session": insta_session
+        }).json()['data']['total_earn_coin'])
+
+    def activate_follow_user(self, access_token: str, insta_session: str) -> typing.Tuple[bool, typing.Union[str, typing.Any]]:
+        resp = post(f'{BASE_URL}/activateFollowUser', headers={
+            "Authorization": f"Bearer {access_token}"
+        }, cookies={
+            "mrinsta_session": insta_session
         }).json()
-        try:
-            if resp['success'] == False:
-                print(f"\t[-] {resp['message']}")
-                return False
-            self.SESSION.headers.update({
-                'Authorization': f"Bearer {resp['data']['access_token']}",
-            })
-        except Exception as e:
-            # this branch shouldn't happen
-            # idk what causes this probably by mrinsta, still trying to figure this out
-            # solution: try rerun (sometimes it works for me)
-            print('\t[-] Login failed')
-            print('\t[-] Try rerun')
-            print(f'\t[DEBUG] {resp}')
-            sleep(2)
-            self.SESSION = Session()
-            resp = self.SESSION.post(f'{BASE_URL}/login', json={
-                'username': account['email'],
-                # same password for all account
-                'password': PASSWORD,
-            }).json()
-            print(resp)
-            if resp['success'] == False:
-                self.SESSION.headers.update({
-                    'Authorization': f"Bearer {resp['data']['access_token']}",
-                })
-                return True
-            self.SESSION.close()
-            self.SESSION = Session()
-            return False
-        return True
-
-    def log_out(self) -> None: self.SESSION.post(f'{BASE_URL}/logout')
-
-    def get_earned_coin_details(self) -> int: return int(self.SESSION.get(
-        f'{BASE_URL}/getEarnedCoinDetails').json()['data']['total_earn_coin'])
-
-    def activate_follow_user(self) -> typing.Tuple[bool, typing.Union[str, typing.Any]]:
-        resp = self.SESSION.post(f'{BASE_URL}/activateFollowUser').json()
         message, data = resp['message'], resp['data']
         return (False, message) if "activated" in message else (True, data)
 
-    def like_post(self) -> None:
+    def like_post(self, access_token: str, insta_session: str) -> None:
         for _ in range(10):
-            self.confirm_like_post(self.refresh_user_like())
-            confirmed_posts = self.like_posts_info()
+            self.confirm_like_post(
+                self.refresh_user_like(access_token, insta_session), access_token, insta_session)
+            confirmed_posts = self.like_posts_info(access_token, insta_session)
             if confirmed_posts > 10:
                 break
-            print(f'\t[+] Confirmed posts: {confirmed_posts}')
-        self.validate_post_like()
+        self.validate_post_like(access_token, insta_session)
 
-    def follow_user(self, user_id: int) -> None:
+    def follow_user(self, user_id: int, access_token: str, insta_session: str) -> None:
         for _ in range(10):
-            confirmed_followers = self.SESSION.get(
-                f'{BASE_URL}/getTotalAndPendingFollow').json()['data']['confirmed_followers']
+            confirmed_followers = get(
+                f'{BASE_URL}/getTotalAndPendingFollow', headers={
+                    "Authorization": f"Bearer {access_token}"
+                }, cookies={
+                    "mrinsta_session": insta_session
+                }).json()['data']['confirmed_followers']
             if confirmed_followers + 1 > 10:
                 break
-            print(f'\t[+] Confirmed followers: {confirmed_followers + 1}')
-            self.SESSION.post(f'{BASE_URL}/confirmFollow', json={
+            post(f'{BASE_URL}/confirmFollow', json={
                 'user_id': user_id,
                 'premium_user': 1,
+            }, headers={
+                "Authorization": f"Bearer {access_token}"
+            }, cookies={
+                "mrinsta_session": insta_session
             })
-            user_id = self.SESSION.post(
-                f'{BASE_URL}/refreshUserFollow').json()['data']['user']['id']
-        self.SESSION.post(f'{BASE_URL}/validateFollowUser')
+            user_id = post(
+                f'{BASE_URL}/refreshUserFollow', headers={
+                    "Authorization": f"Bearer {access_token}"
+                }, cookies={
+                    "mrinsta_session": insta_session
+                }).json()['data']['user']['id']
+        post(f'{BASE_URL}/validateFollowUser', headers={
+            "Authorization": f"Bearer {access_token}"
+        }, cookies={
+            "mrinsta_session": insta_session
+        })
 
-    def redeem_earned_coin(self, total_coin: int) -> None:
+    def redeem_earned_coin(self, total_coin: int, access_token: str, insta_session: str) -> None:
         # coin, qnty should be more clear, fix needed
         coin, qnty = total_coin, total_coin // 10
         if total_coin > 1000:
             coin, qnty = 1000, 100
-        resp = self.SESSION.post(f'{BASE_URL}/redeemEarnedCoinDetails', json={
+        resp = post(f'{BASE_URL}/redeemEarnedCoinDetails', json={
             'service': 'followers',
             'comments': '',
             'link': f'https://www.instagram.com/{TARGET}/',
             'qnty': qnty,
             'coin': coin,
+        }, headers={
+            "Authorization": f"Bearer {access_token}"
+        }, cookies={
+            "mrinsta_session": insta_session
         }).json()
-        print(f"\t[+] Message: {resp['message']}")
 
 
 class CreateAccounts:
@@ -278,7 +316,6 @@ class CreateAccounts:
         self.save_emails()
         exit(0)
 
-
 if __name__ == '__main__':
-    # MrInsta()
-    CreateAccounts()
+    MrInsta()
+    # CreateAccounts()
