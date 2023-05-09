@@ -6,7 +6,6 @@ from dotenv import load_dotenv
 from lxml import html
 import typing
 import signal
-from concurrent.futures import ThreadPoolExecutor
 
 load_dotenv()
 
@@ -20,37 +19,32 @@ BASE_URL = 'https://api.mrinsta.com/api'
 class MrInsta:
     def __init__(self) -> None:
         print(f'[+] Target: {TARGET}')
-        self.ACCOUNTS = load(
-            open(f"{path.join(path.dirname(__file__), 'accounts.json')}", 'r'))
-        self.process_accounts()
+        for account in load(
+            open(f"{path.join(path.dirname(__file__), 'accounts.json')}", 'r')):
+                print(f'[+] Account: {account["email"]}')
+                _, access_token, insta_session = self.login(account)
+                if not _:
+                    print(f"[-] Login failed")
+                    return
 
-    def process_accounts(self, max_workers=10) -> None:
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            for account in self.ACCOUNTS:
-                executor.submit(self.process_account, account)
+                is_free_followers_plan_active, is_free_post_like_active = self.active_subscription_setup(
+                    access_token, insta_session)
+                _, message = self.activate_follow_user(access_token, insta_session)
+                if not is_free_followers_plan_active and not 'activated' in message:
+                    self.follow_user(message['user']['id'],
+                                    access_token, insta_session)
+                else:
+                    print(f'\t[-] Follow plan not active')
+                if not is_free_post_like_active:
+                    self.like_post(access_token, insta_session)
+                else:
+                    print(f'\t[-] Like plan not active')
 
-    def process_account(self, account: str) -> None:
-        _, access_token, insta_session = self.login(account)
-
-        if not _:
-            return
-
-        is_free_followers_plan_active, is_free_post_like_active = self.active_subscription_setup(
-            access_token, insta_session)
-        _, message = self.activate_follow_user(access_token, insta_session)
-        if not is_free_followers_plan_active and not 'activated' in message:
-            self.follow_user(message['user']['id'],
-                             access_token, insta_session)
-        if not is_free_post_like_active:
-            self.like_post(access_token, insta_session)
-
-        total_coin = self.get_earned_coin_details(
-            access_token, insta_session)
-        print(f"[+] {account['email']}: {total_coin}")
-        if total_coin > 0:
-            self.redeem_earned_coin(
-                total_coin, access_token, insta_session, account)
-        self.log_out(access_token, insta_session)
+                total_coin = self.get_earned_coin_details(access_token, insta_session)
+                if total_coin > 0:
+                    self.redeem_earned_coin(
+                        total_coin, access_token, insta_session)
+                self.log_out(access_token, insta_session)
 
     def validate_post_like(self, access_token: str, insta_session: str) -> str:
         return post(f'{BASE_URL}/validatePostLike', headers={
@@ -146,6 +140,7 @@ class MrInsta:
                 }).json()['data']['confirmed_followers']
             if confirmed_followers + 1 > 10:
                 break
+            print(f'\t[*] Confirmed followers: {confirmed_followers + 1}')
             post(f'{BASE_URL}/confirmFollow', json={
                 'user_id': user_id,
                 'premium_user': 1,
@@ -182,6 +177,7 @@ class MrInsta:
         }, cookies={
             "mrinsta_session": insta_session
         }).json()
+        print(f"\t[*] Message: {resp['message']}")
 
 
 class CreateAccounts:
@@ -200,8 +196,8 @@ class CreateAccounts:
 
         while True:
             _, email = self.generate_new_email()
-            _, data = self.register(email)
-            _, otp = self.get_otp(email)
+            _, user_id, access_token = self.register(email)
+            _, otp = self.get_otp(access_token, email)
             if not _:
                 print('\t[-] No OTP found')
                 print(f'\t[-] Last account: {self.ACCOUNTS[self.INDEX]}')
@@ -209,7 +205,7 @@ class CreateAccounts:
                 self.WORKED_ACCOUNTS = []
                 continue
             _, data = self.verify_email(email, otp)
-            _ = self.connect_ig(email)
+            _ = self.connect_ig(email, user_id, access_token)
             if self.INDEX >= len(self.ACCOUNTS):
                 print('[+] Well no account left')
                 break
@@ -217,14 +213,7 @@ class CreateAccounts:
         with open('done', 'w') as f:
             f.write('\n'.join(self.WORKED_ACCOUNTS))
 
-    def connect_ig(self, email: str):
-        # Login again
-        resp = post(f'{BASE_URL}/login', json={
-            "username": email,
-            "password": PASSWORD
-        }).json()
-        user_id, access_token = resp['data']['user_id'], resp['data']['access_token']
-
+    def connect_ig(self, email: str, user_id: str, access_token: str):
         # storeUpdateUserDetails
         resp = post(f'{BASE_URL}/storeUpdateUserDetails', headers={
             "Authorization": f"Bearer {access_token}"
@@ -258,43 +247,45 @@ class CreateAccounts:
                 return True
             self.INDEX += 1
 
-    def get_otp(self, email: str):
+    def get_otp(self, access_token: str, email: str):
         for _ in range(1, 50):
+            # self.send_verify_email(access_token, email)
+            sleep(2)
             try:
-                sleep(2)
                 tree = html.fromstring(
                     get(f'{self.EMAIL_URL}/{email}').content)
                 otp = tree.xpath(
                     "//table[@class='content']//h3")[0].text_content()
                 if len(otp) == 6:
-                    print(f'\t[+] OTP: {otp}')
+                    # print(f'\t[+] OTP: {otp}')
                     return True, otp
             except Exception as e:
+                # print(e)
                 pass
         return False, ''
 
-    def register(self, email: str):
+    def register(self, email: str) -> typing.Tuple[bool, str, str]:
         resp = post(f'{BASE_URL}/register', json={
             "email": email,
             "password": PASSWORD,
             "confirm_password": PASSWORD,
         }).json()
-        if resp['success']:
-            print('\t[+] Registered on mrinsta')
-            pass
-        return resp['success'], resp['data']
+        try:
+            return resp['success'], resp['data']['user_id'], resp['data']['token']['access_token']
+        except Exception as e:
+            return False, "", ""
 
     def verify_email(self, email: str, otp: str):
         resp = get(f"{BASE_URL}/verify/{otp}/{email}").json()
         if resp['success']:
-            print("\t[+] Account activated")
+            # print("\t[+] Account activated")
             return resp['success'], resp['message']
         return False, resp
 
     def generate_new_email(self):
         tree = html.fromstring(get(f'{self.EMAIL_URL}').content)
         mail = tree.xpath("//span[@id='email_ch_text']")[0].text_content()
-        print(f'[+] Email: {mail}')
+        # print(f'[+] Email: {mail}')
         if '@' in mail:
             return True, mail
         return False, ''
@@ -312,9 +303,18 @@ class CreateAccounts:
             with open('accounts.json', 'w') as f:
                 dump(accounts, f)
 
+    def send_verify_email(self, access_token: str, email: str):
+        resp = post(f"{BASE_URL}/sendVerifyEmail", headers={
+            "Authorization": access_token
+        }, json={
+            "email": email
+        }).json()
+        return resp['success']
+
     def signal_handler(self, sig, frame) -> None:
         self.save_emails()
         exit(0)
+
 
 if __name__ == '__main__':
     MrInsta()
