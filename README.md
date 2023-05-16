@@ -1,8 +1,13 @@
-### Known bugs
+# MrInsta
+Automate the process of obtaining free Instagram followers using Mr. Insta
+- Full vlog [youtube](https://youtu.be/WQyZ7So0mrA) 
 
 - The `MrInsta.login` function may occasionally fail even with correct credentials due to server issues, especially if there are too many accounts. 
 
-### How it works
+- Create fake users in [https://app.mrinsta.com](https://app.mrinsta.com/) then copy to `users.json`
+- Update your `.env` file
+- Update your `main.py/TARGET`
+- How to use [youtube](https://youtu.be/_9Hc-cdZ_c8) 
 
 - `CreateAccounts`
 
