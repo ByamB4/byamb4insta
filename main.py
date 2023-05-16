@@ -16,17 +16,44 @@ PASSWORD = getenv('PASSWORD', 'Password!@#123')
 
 BASE_URL = 'https://api.mrinsta.com/api'
 
+
 class MrInsta:
     def __init__(self) -> None:
+        self.WORKED_ACCOUNTS, self.ACCOUNTS, self.INDEX = [], [], 0
+
+        with open('followers.txt', 'r') as f:
+            for _ in f.readlines():
+                self.ACCOUNTS.append(_.strip())
+
+        # working from behind, coz most of accounts taken by tulgaa
+        self.ACCOUNTS = self.ACCOUNTS[::-1]
+
         print(f'[+] Target: {TARGET}')
         for account in load(
-            open(f"{path.join(path.dirname(__file__), 'accounts.json')}", 'r')):
-                print(f'[+] Account: {account["email"]}')
-                _, access_token, insta_session = self.login(account)
-                if not _:
-                    print(f"[-] Login failed")
-                    return
+                open(f"{path.join(path.dirname(__file__), 'accounts.json')}", 'r')):
+            print(f'[+] Account: {account["email"]}')
+            _, access_token, insta_session = self.login(account)
+            if not _:
+                print(f"\t[-] Login failed")
+                continue
 
+            # START: UPDATED PART CONNECT MORE THAN 1 ACCOUNT
+            # self.connect_account(access_token, insta_session)
+            # END
+
+            connected_accounts = self.get_connected_accounts(access_token, insta_session)
+            usernames = [_['instagram_data']['username'] for _ in connected_accounts['connected_account']]
+            usernames.append(connected_accounts['primary_account']['instagram_data']['username'])
+            for username in usernames:
+                print(f'\t[*] Username: {username}')
+                resp = post(f'{BASE_URL}/changeIGAccount', headers={
+                    "Authorization": f"Bearer {access_token}"
+                }, cookies={
+                    "mrinsta_session": insta_session
+                }, json={
+                    'username': username
+                })
+                insta_session, access_token = resp.cookies['mrinsta_session'], resp.json()['data']['token']
                 is_free_followers_plan_active, is_free_post_like_active = self.active_subscription_setup(
                     access_token, insta_session)
                 _, message = self.activate_follow_user(access_token, insta_session)
@@ -34,17 +61,45 @@ class MrInsta:
                     self.follow_user(message['user']['id'],
                                     access_token, insta_session)
                 else:
-                    print(f'\t[-] Follow plan not active')
+                    print(f'\t\t[-] Follow plan not active')
                 if not is_free_post_like_active:
                     self.like_post(access_token, insta_session)
                 else:
-                    print(f'\t[-] Like plan not active')
+                    print(f'\t\t[-] Like plan not active')
 
                 total_coin = self.get_earned_coin_details(access_token, insta_session)
                 if total_coin > 0:
                     self.redeem_earned_coin(
                         total_coin, access_token, insta_session)
-                self.log_out(access_token, insta_session)
+            self.log_out(access_token, insta_session)
+
+    def get_connected_accounts(self, access_token: str, insta_session: str):
+        resp = get(f'{BASE_URL}/listConnectedAccount', headers={
+            "Authorization": f"Bearer {access_token}"
+        }, cookies={
+            "mrinsta_session": insta_session
+        }).json()
+        return resp['data']
+
+    def connect_account(self, access_token: str, insta_session: str):
+        resp = get(f'{BASE_URL}/listConnectedAccount', headers={
+            "Authorization": f"Bearer {access_token}"
+        }, cookies={
+            "mrinsta_session": insta_session
+        }).json()
+        for _ in range(5 - len(resp['data']['connected_account'])):
+            while self.INDEX < len(self.ACCOUNTS):
+                resp = post(f'{BASE_URL}/addConnectedIGAccount', headers={
+                    "Authorization": f"Bearer {access_token}"
+                }, json={
+                    "username": self.ACCOUNTS[self.INDEX],
+                }, cookies={
+                    "mrinsta_session": insta_session
+                }).json()
+                if resp['success']:
+                    print(f'\t[+] Works: {self.ACCOUNTS[self.INDEX]}')
+                    break
+                self.INDEX += 1
 
     def validate_post_like(self, access_token: str, insta_session: str) -> str:
         return post(f'{BASE_URL}/validatePostLike', headers={
@@ -54,11 +109,15 @@ class MrInsta:
         }).json()['message']
 
     def confirm_like_post(self, target_id: str, access_token: str, insta_session: str) -> str:
-        return post(f'{BASE_URL}/confirmLikePosts', json={'post_id': target_id}, headers={
-            "Authorization": f"Bearer {access_token}"
-        }, cookies={
-            "mrinsta_session": insta_session
-        }).json()['message']
+        try:
+            return post(f'{BASE_URL}/confirmLikePosts', json={'post_id': target_id}, headers={
+                "Authorization": f"Bearer {access_token}"
+            }, cookies={
+                "mrinsta_session": insta_session
+            }).json()['message']
+        except Exception as e:
+            print(f'[-] Error@confirm_like_post: {e}')
+            input()
 
     def refresh_user_like(self, access_token: str, insta_session: str) -> str:
         return post(f'{BASE_URL}/refreshUserLike', headers={
@@ -87,16 +146,17 @@ class MrInsta:
         return resp['is_free_followers_plan_active'], resp['is_free_post_like_active']
 
     def login(self, account: dict) -> typing.Tuple[bool, str, str]:
-        resp = post(f'{BASE_URL}/login', json={
-            'username': account['email'],
-            'password': PASSWORD,
-        })
-
-        if 'access_token' in resp.json()['data']:
-            return True, resp.json()['data']['access_token'], resp.cookies['mrinsta_session']
-        # its related to mrinsta
-        # print(f'[-] Login failed: {account}')
-        # print(resp.json())
+        # it's related to mrinsta server
+        for _ in range(50):
+            sleep(2)
+            resp = post(f'{BASE_URL}/login', json={
+                'username': account['email'],
+                'password': PASSWORD,
+            })
+            try:
+                return True, resp.json()['data']['access_token'], resp.cookies['mrinsta_session']
+            except Exception as e:
+                pass
         return False, "", ""
 
     def log_out(self, access_token: str, insta_session: str) -> None: post(f'{BASE_URL}/logout', headers={
@@ -126,6 +186,7 @@ class MrInsta:
             self.confirm_like_post(
                 self.refresh_user_like(access_token, insta_session), access_token, insta_session)
             confirmed_posts = self.like_posts_info(access_token, insta_session)
+            print(f'\t\t[*] Confirmed posts: {confirmed_posts}')
             if confirmed_posts > 10:
                 break
         self.validate_post_like(access_token, insta_session)
@@ -140,7 +201,7 @@ class MrInsta:
                 }).json()['data']['confirmed_followers']
             if confirmed_followers + 1 > 10:
                 break
-            print(f'\t[*] Confirmed followers: {confirmed_followers + 1}')
+            print(f'\t\t[*] Confirmed followers: {confirmed_followers + 1}')
             post(f'{BASE_URL}/confirmFollow', json={
                 'user_id': user_id,
                 'premium_user': 1,
@@ -177,7 +238,7 @@ class MrInsta:
         }, cookies={
             "mrinsta_session": insta_session
         }).json()
-        print(f"\t[*] Message: {resp['message']}")
+        print(f"\t\t[*] Message: {resp['message']}")
 
 
 class CreateAccounts:
