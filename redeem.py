@@ -14,24 +14,18 @@ DEBUG = False
 PASSWORD = 'p4$$w0rD!'
 # ==============================================
 
-
 class RedeemCoin:
     def __init__(self) -> None:
-        self.SPENT = 0
-        self.QUANTITY = 1_000
-        self.IS_DONE = False
-
         self.read_accounts()
         print(f'[+] Target: {TARGET}')
         self.process_accounts()
 
     def read_accounts(self):
         self.ACCOUNTS = load(
-            open(f"{path.join(path.dirname(__file__), 'accounts.json')}", 'r'))
+            open(f"{path.join(path.dirname(__file__), 'accounts.json')}", 'r'))[::-1]
 
     def process_accounts(self):
         for account in self.ACCOUNTS:
-            if self.IS_DONE: break
             _, access_token, insta_session = self.login(account)
             if not _:
                 print(f"\t[-] Login failed: {account['email']}")
@@ -44,14 +38,13 @@ class RedeemCoin:
             usernames.append(
                 connected_accounts['primary_account']['instagram_data']['username'])
             for username in usernames:
-                if self.IS_DONE: break
                 print(f'\t[*] Username: {username}')
                 total_coin = self.get_earned_coin_details(
                     access_token, insta_session)
                 if total_coin > 0:
-                    self.IS_DONE = self.redeem_earned_coin(
+                    print(f'\t\t[+] Earned: {total_coin // 10} followers')
+                    self.redeem_earned_coin(
                         total_coin, access_token, insta_session)
-                    print(f'\t\t[+] Added: {self.SPENT}')
             self.log_out(access_token, insta_session)
 
     def get_connected_accounts(self, access_token: str, insta_session: str):
@@ -97,25 +90,22 @@ class RedeemCoin:
             if DEBUG: input()
             return 0
 
-    def redeem_earned_coin(self, total_coin: int, access_token: str, insta_session: str) -> bool:
-        needed = self.QUANTITY - self.SPENT
-        if needed <= 0:
-            return True
-        earn = min(total_coin // 10, needed)
-
+    def redeem_earned_coin(self, total_coin: int, access_token: str, insta_session: str) -> None:
+        # coin, qnty should be more clear, fix needed
+        coin, qnty = total_coin, total_coin // 10
+        if total_coin > 1000:
+            coin, qnty = 1000, 100
         resp = post(f'{BASE_URL}/redeemEarnedCoinDetails', json={
             'service': 'followers',
             'comments': '',
             'link': f'https://www.instagram.com/{TARGET}/',
-            'qnty': earn,
-            'coin': earn * 10,
+            'qnty': qnty,
+            'coin': coin,
         }, headers={
             "Authorization": f"Bearer {access_token}"
         }, cookies={
             "mrinsta_session": insta_session
         }).json()
-        self.SPENT += earn
-        return False
 
 
 if __name__ == '__main__':

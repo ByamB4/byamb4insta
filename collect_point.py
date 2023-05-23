@@ -10,7 +10,6 @@ PASSWORD = 'p4$$w0rD!'
 BASE_URL = 'https://api.mrinsta.com/api'
 DEBUG = False
 
-
 class CollectPoint:
     def __init__(self) -> None:
         self.WORKED_ACCOUNTS = []
