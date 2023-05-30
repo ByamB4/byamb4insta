@@ -1,0 +1,108 @@
+[MAIN]
+suggestion-mode=yes
+persistent=yes
+load-plugin=
+jobs=4
+ignore-patterns=
+
+[TYPECHECK]
+contextmanager-decorators=contextlib.contextmanager
+generated-members=capnp.* cereal.* pygame.* zmq.* setproctitle.* smbus2.* usb1.* serial.* cv2.* ft4222.* carla.*
+ignore-mixin-members=yes
+ignore-on-opaque-inference=yes
+ignored-classes=optparse.Values,thread._local,_thread._local
+ignored-modules=flask setproctitle usb1 flask.ext.socketio smbus2 usb1.*
+missing-member-hint=yes
+missing-member-hint-distance=1
+missing-member-max-choices=1
+
+[VARIABLES]
+additional-builtins=
+allow-global-unused-variables=yes
+callbacks=cb_,_cb
+dummy-variables-rgx=_+$|(_[a-zA-Z0-9_]*[a-zA-Z0-9]+?$)|dummy|^ignored_|^unused_
+ignored-argument-names=_.*|^ignored_|^unused_
+init-import=no
+redefining-builtins-modules=six.moves,past.builtins,future.builtins
+
+[FORMAT]
+expected-line-ending-format=
+ignore-long-lines=^\s*(# )?<?https?://\S+>?$
+indent-after-paren=4
+indent-string='  '
+max-line-length=200
+max-module-lines=1000
+single-line-class-stmt=no
+single-line-if-stmt=no
+
+[BASIC]
+argument-naming-style=snake_case
+attr-naming-style=snake_case
+bad-names=foo,
+          bar,
+          baz,
+          toto,
+          tutu,
+          tata
+class-attribute-naming-style=any
+class-naming-style=PascalCase
+const-naming-style=UPPER_CASE
+docstring-min-length=-1
+function-naming-style=snake_case
+good-names=i,
+           j,
+           k,
+           ex,
+           Run,
+           _
+include-naming-hint=no
+inlinevar-naming-style=any
+method-naming-style=snake_case
+module-naming-style=snake_case
+name-group=
+no-docstring-rgx=^_
+property-classes=abc.abstractproperty
+variable-naming-style=snake_case
+
+[DESIGN]
+max-args=5
+max-attributes=7
+max-bool-expr=5
+max-branches=12
+max-locals=15
+max-parents=7
+max-public-methods=20
+max-returns=6
+max-statements=50
+min-public-methods=2
+
+[CLASSES]
+defining-attr-methods=__init__,
+                      __new__,
+                      setUp
+exclude-protected=_asdict,
+                  _fields,
+                  _replace,
+                  _source,
+                  _make
+valid-classmethod-first-arg=cls
+valid-metaclass-classmethod-first-arg=mcs
+
+[IMPORTS]
+allow-wildcard-with-all=no
+analyse-fallback-blocks=no
+deprecated-modules=regsub,
+                   TERMIOS,
+                   Bastion,
+                   rexec
+ext-import-graph=
+import-graph=
+int-import-graph=
+known-standard-library=
+known-third-party=enchant
+
+[STRING]
+check-str-concat-over-line-jumps=yes
+
+[EXCEPTIONS]
+overgeneral-exceptions=builtins.Exception
